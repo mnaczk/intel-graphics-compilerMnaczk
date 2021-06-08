@@ -28,6 +28,7 @@ matrix:
         apt:
           packages:
             - libc6=2.31-0ubuntu9.2
+            - liblld-10
     - os: linux
       dist: focal # Ubuntu 20.04
       compiler: clang-10
@@ -36,6 +37,7 @@ matrix:
         apt:
           packages:
             - libc6=2.31-0ubuntu9.2
+            - liblld-10
 
 git:
   depth: false
