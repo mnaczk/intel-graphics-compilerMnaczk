@@ -28,7 +28,6 @@ matrix:
         apt:
           packages:
             - libc6=2.31-0ubuntu9.2
-            - liblld-10
     - os: linux
       dist: focal # Ubuntu 20.04
       compiler: clang-10
@@ -37,7 +36,6 @@ matrix:
         apt:
           packages:
             - libc6=2.31-0ubuntu9.2
-            - liblld-10
 
 git:
   depth: false
@@ -52,7 +50,7 @@ script:
   - sudo ./llvm.sh ${LLVM_VER}
 
   - sudo apt-get update
-  - sudo apt-get install flex bison libz-dev cmake build-essential
+  - sudo apt-get install flex bison libz-dev cmake build-essential liblld-10
 
   - mkdir Old_IGC
   - cd Old_IGC
