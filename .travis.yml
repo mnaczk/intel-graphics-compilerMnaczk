@@ -50,7 +50,7 @@ script:
   - sudo ./llvm.sh ${LLVM_VER}
 
   - sudo apt-get update
-  - sudo apt-get install flex bison libz-dev cmake build-essential liblld-10
+  - sudo apt-get install flex bison libz-dev cmake build-essential liblld-10-dev
 
   - mkdir Old_IGC
   - cd Old_IGC
