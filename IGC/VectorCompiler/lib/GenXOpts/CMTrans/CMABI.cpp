@@ -613,7 +613,7 @@ void CMABI::LocalizeGlobals(LocalizationInfo &LI) {
 CallGraphNode *CMABI::ProcessNode(CallGraphNode *CGN) {
   Function *F = CGN->getFunction();
 
-  // nothing to do for declarations or already visited functions.
+  // Nothing to do for declarations or already visited functions.
   if (!F || F->isDeclaration() || AlreadyVisited.count(F))
     return 0;
 
@@ -647,6 +647,10 @@ CallGraphNode *CMABI::ProcessNode(CallGraphNode *CGN) {
   // Non-kernels, only transforms module locals.
   if (!F->hasLocalLinkage())
     return 0;
+
+  // Indirectly called functions cannot be transformed in general case.
+  if (F->hasAddressTaken())
+    return nullptr;
 
   SmallVector<Argument*, 16> PointerArgs;
   for (auto &Arg: F->args())
@@ -713,35 +717,28 @@ static bool IsPtrArgModified(const Value &Arg) {
 
 bool CMABI::OnlyUsedBySimpleValueLoadStore(Value *Arg) {
   for (const auto &U : Arg->users()) {
-    if (auto I = dyn_cast<Instruction>(U)) {
-      if (auto LI = dyn_cast<LoadInst>(U)) {
-        if (Arg != LI->getPointerOperand())
-          return false;
-      }
-      if (auto SI = dyn_cast<LoadInst>(U)) {
-        if (Arg != SI->getPointerOperand())
-          return false;
-      }
-      else if (auto GEP = dyn_cast<GetElementPtrInst>(U)) {
-        if (Arg != GEP->getPointerOperand())
-          return false;
-        else if (!GEP->hasAllZeroIndices())
-          return false;
-        if (!OnlyUsedBySimpleValueLoadStore(U))
-          return false;
-      }
-      else if (isa<AddrSpaceCastInst>(U) || isa<PtrToIntInst>(U)) {
-        if (!OnlyUsedBySimpleValueLoadStore(U))
-          return false;
-      }
-      else if (auto CI = dyn_cast<CallInst>(U)) {
-        auto Callee = CI->getCalledFunction();
-        if (Callee && !Callee->isIntrinsic()) {
-          //if (GenXIntrinsic::isAnyNonTrivialIntrinsic(Inst))
-          return false;
-        }
-      }
-      else
+    auto *I = dyn_cast<Instruction>(U);
+    if (!I)
+      return false;
+
+    if (auto LI = dyn_cast<LoadInst>(U)) {
+      if (Arg != LI->getPointerOperand())
+        return false;
+    }
+    else if (auto SI = dyn_cast<StoreInst>(U)) {
+      if (Arg != SI->getPointerOperand())
+        return false;
+    }
+    else if (auto GEP = dyn_cast<GetElementPtrInst>(U)) {
+      if (Arg != GEP->getPointerOperand())
+        return false;
+      else if (!GEP->hasAllZeroIndices())
+        return false;
+      if (!OnlyUsedBySimpleValueLoadStore(U))
+        return false;
+    }
+    else if (isa<AddrSpaceCastInst>(U) || isa<PtrToIntInst>(U)) {
+      if (!OnlyUsedBySimpleValueLoadStore(U))
         return false;
     }
     else
@@ -1234,22 +1231,12 @@ public:
 
   void run() {
     std::vector<CallInst *> DirectUsers;
-    std::vector<User *> IndirectUsers;
 
     for (auto *U : OrigFunc.users()) {
-      if (isa<CallInst>(U))
-        DirectUsers.push_back(cast<CallInst>(U));
-      else
-        IndirectUsers.push_back(U);
-    }
-
-    for (auto *U : IndirectUsers) {
-      // ignore old constexprs as
-      // they may still be hanging around
-      // but are irrelevant as we called breakConstantExprs earlier
-      // in this pass
-      if (!isa<ConstantExpr>(U))
-        U->replaceUsesOfWith(&OrigFunc, &NewFunc);
+      IGC_ASSERT_MESSAGE(
+          isa<CallInst>(U),
+          "the transformation is not applied to indirectly called functions");
+      DirectUsers.push_back(cast<CallInst>(U));
     }
 
     std::vector<CallInst *> NewDirectUsers;

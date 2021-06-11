@@ -166,7 +166,6 @@ void LocalRA::preLocalRAAnalysis()
         unsigned reserveSpillSize = 0;
         unsigned int spillRegSize = 0;
         unsigned int indrSpillRegSize = 0;
-        LivenessAnalysis liveAnalysis(gra, G4_GRF | G4_INPUT);
         gra.determineSpillRegSize(spillRegSize, indrSpillRegSize);
 
         reserveSpillSize = spillRegSize + indrSpillRegSize;
@@ -178,7 +177,7 @@ void LocalRA::preLocalRAAnalysis()
         }
         else
         {
-            numRegLRA = numGRF - numRowsReserved - reserveSpillSize - 1;
+            numRegLRA = numGRF - numRowsReserved - reserveSpillSize - 3; // spill Header, scratch offset, a0.2
         }
     }
     else
@@ -301,7 +300,7 @@ void LocalRA::trivialAssignRA(bool& needGlobalRA, bool threeSourceCandidate)
         std::cout << "\t--trivial RA\n";
     }
 
-    needGlobalRA = assignUniqueRegisters(threeSourceCandidate, builder.lowHighBundle());
+    needGlobalRA = assignUniqueRegisters(threeSourceCandidate, builder.lowHighBundle(), false);
 
     if (!needGlobalRA)
     {
@@ -403,7 +402,7 @@ bool LocalRA::localRAPass(bool doRoundRobin, bool doSplitLLR)
             twoBanksAssign = highInternalConflict;
         }
 
-        needGlobalRA = assignUniqueRegisters(doBCR, twoBanksAssign);
+        needGlobalRA = assignUniqueRegisters(doBCR, twoBanksAssign, builder.getOption(vISA_HybridRAWithSpill) && !doRoundRobin);
     }
 
     if (needGlobalRA && doRoundRobin)
@@ -506,6 +505,14 @@ bool LocalRA::localRA()
                 std::cout << "\t--first-fit " << "RA\n";
             }
             globalLRSize = 0;
+            if (builder.getOption(vISA_HybridRAWithSpill))
+            {
+                countLiveIntervals();
+            }
+            else
+            {
+                globalLRSize = 0;
+            }
             evenAlign();
             needGlobalRA = localRAPass(false, doSplitLLR);
         }
@@ -693,6 +700,10 @@ inline static unsigned short getOccupiedBundle(IR_Builder& builder, GlobalRA& gr
     unsigned int evenBankNum = 0;
     unsigned int oddBankNum = 0;
 
+    if (!builder.hasDPAS() || !builder.getOption(vISA_EnableDPASBundleConflictReduction))
+    {
+        return 0;
+    }
 
     for (const BundleConflict& conflict : gra.getBundleConflicts(dcl))
     {
@@ -736,7 +747,7 @@ inline static unsigned short getOccupiedBundle(IR_Builder& builder, GlobalRA& gr
     return occupiedBundles;
 }
 
-bool LocalRA::assignUniqueRegisters(bool twoBanksRA, bool twoDirectionsAssign)
+bool LocalRA::assignUniqueRegisters(bool twoBanksRA, bool twoDirectionsAssign, bool hybridWithSpill)
 {
     // Iterate over all dcls and calculate number of rows
     // required if each unallocated dcl had its own physical
@@ -802,12 +813,22 @@ bool LocalRA::assignUniqueRegisters(bool twoBanksRA, bool twoDirectionsAssign)
                     return true;
                 }
                 numRows += dcl->getNumRows();
-                unallocatedRanges.push_back(dcl);
+                if (hybridWithSpill)
+                {
+                    if (dcl->isDoNotSpill())
+                    {
+                        unallocatedRanges.push_back(dcl);
+                    }
+                }
+                else
+                {
+                    unallocatedRanges.push_back(dcl);
+                }
             }
         }
     }
 
-    if (numRows < numRegLRA)
+    if (numRows < numRegLRA || hybridWithSpill)
     {
         // Get superset of registers used by local RA
         // in all basic blocks.
@@ -829,7 +850,7 @@ bool LocalRA::assignUniqueRegisters(bool twoBanksRA, bool twoDirectionsAssign)
         }
 
 
-        needGlobalRA = false;
+        needGlobalRA = hybridWithSpill;
         bool assignFromFront = true;
 #ifdef DEBUG_VERBOSE_ON
         COUT_ERROR << "Trival RA: " << std::endl;
@@ -902,7 +923,14 @@ bool LocalRA::assignUniqueRegisters(bool twoBanksRA, bool twoDirectionsAssign)
         {
             for (auto dcl : unallocatedRanges)
             {
-                dcl->getRegVar()->resetPhyReg();
+                if (!hybridWithSpill)
+                {
+                    dcl->getRegVar()->resetPhyReg();
+                }
+                else if (!dcl->isDoNotSpill())
+                {
+                    dcl->getRegVar()->resetPhyReg();
+                }
             }
         }
         else
@@ -980,7 +1008,7 @@ void GlobalRA::removeUnreferencedDcls()
             getNumRefs(dcl) == 0 &&
             dcl->getRegVar()->isPhyRegAssigned() == false &&
             dcl != kernel.fg.builder->getBuiltinR0()
-            ;
+            && dcl != kernel.fg.builder->getSpillSurfaceOffset();
     };
 
     kernel.Declares.erase(
@@ -1627,6 +1655,7 @@ void LocalRA::calculateLiveIntervals(G4_BB* bb, std::vector<LocalLiveRange*>& li
                         if ((builder.WaDisableSendSrcDstOverlap() &&
                             ((curInst->isSend() && i == 0) ||
                             (curInst->isSplitSend() && i == 1)))
+                            || (curInst->isDpas() && i == 1)  //For DPAS, as part of same instruction, src1 should not have overlap with dst. Src0 and src2 are okay to have overlap
                             || (builder.avoidDstSrcOverlap() &&  curInst->getDst() != NULL && hasDstSrcOverlapPotential(curInst->getDst(), src->asSrcRegRegion()))
                             )
                         {

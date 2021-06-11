@@ -21,6 +21,7 @@ SPDX-License-Identifier: MIT
 #include <llvm/ADT/Statistic.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/InstIterator.h>
+#include "llvmWrapper/Support/TypeSize.h"
 
 #include "GenX.h"
 #include "GenXIntrinsics.h"
@@ -326,13 +327,14 @@ void GenXVectorCombiner::createNewInstruction(
     GenXIntrinsic::ID IdCode = GenXIntrinsic::getGenXIntrinsicID(Operation);
     Module *M = Operation->getParent()->getParent()->getParent();
     switch (IdCode) {
-    default:
-      IGC_ASSERT_MESSAGE(false, "get unsupported intrinsic");
     case GenXIntrinsic::genx_absf:
     case GenXIntrinsic::genx_absi:
       Fn = GenXIntrinsic::getAnyDeclaration(M, IdCode, {InsteadOf->getType()});
       break;
-      }
+    default:
+      IGC_ASSERT_MESSAGE(false, "unsupported intrinsic");
+      return;
+    }
     IGC_ASSERT(Fn);
     CallInst *CI = Builder.CreateCall(Fn, Vals, VALUE_NAME("widened"));
     InsteadOf->replaceAllUsesWith(CI);
@@ -381,8 +383,9 @@ bool GenXVectorCombiner::processWorkList() {
       Constant *ScalarSecondOperand =
           cast<Constant>(RefAnyInstPack.Operation->getOperand(1))
               ->getSplatValue();
-      int Width = cast<IGCLLVM::FixedVectorType>(OriginalSrc->getType())
+      unsigned NumericWidth = cast<IGCLLVM::FixedVectorType>(OriginalSrc->getType())
                       ->getNumElements();
+	  auto Width = IGCLLVM::getElementCount(NumericWidth);
       Constant *WideConstant =
           ConstantVector::getSplat(Width, ScalarSecondOperand);
       Vals.push_back(WideConstant);

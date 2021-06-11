@@ -125,6 +125,7 @@ namespace IGC
         std::optional<uint64_t> m_NumGRFFill;
         std::optional<uint64_t> m_NumSends;
         std::optional<uint64_t> m_NumCycles;
+        std::optional<uint64_t> m_NumSendStallCycles;
 
 
         void Destroy()
@@ -264,6 +265,8 @@ namespace IGC
         unsigned int numAllocaInsts;
         unsigned int numPsInputs;
         bool hasDynamicGenericLoadStore;
+        unsigned int numGlobalInsts;
+        unsigned int numLocalInsts;
     };
 
     struct SSimplePushInfo

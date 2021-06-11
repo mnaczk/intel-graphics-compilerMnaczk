@@ -86,23 +86,23 @@ void IGC::DbgDecoder::CallFrameInfo::print(llvm::raw_ostream& OS) const {
   OS << "    callerbefpValid: " << callerbefpValid << "\n";
   OS << "    retAddrValid: " << retAddrValid << "\n";
 
-  OS << "    befp list: [\n";
+  OS << "    befp list: [\n    ";
   PrintItems(OS, befp, "\n        ");
   OS << "    ]\n";
 
-  OS << "    callerbefp list: [\n";
+  OS << "    callerbefp list: [\n    ";
   PrintItems(OS, callerbefp, "\n        ");
   OS << "    ]\n";
 
-  OS << "    retaddr list: [\n";
+  OS << "    retaddr list: [\n    ";
   PrintItems(OS, retAddr, "\n        ");
   OS << "    ]\n";
 
-  OS << "    callee save entry list: [\n";
+  OS << "    callee save entry list: [\n    ";
   PrintItems(OS, calleeSaveEntry, "\n        ");
   OS << "    ]\n";
 
-  OS << "    caller save entry list: [\n";
+  OS << "    caller save entry list: [\n    ";
   PrintItems(OS, callerSaveEntry, "\n        ");
   OS << "    ]\n";
 }
@@ -110,11 +110,11 @@ void IGC::DbgDecoder::DbgInfoFormat::print(llvm::raw_ostream& OS) const {
     OS << "<VISADebugInfo>\n";
     OS << "Kernel: " << kernelName << "\n";
     OS << "RelocOffset: " << relocOffset << "\n";
-    OS << "NumSubroutines: " << numSubRoutines << "\n";
+    OS << "NumSubroutines: " << subs.size() << "\n";
 
-    IGC_ASSERT(numSubRoutines == subs.size());
-    OS << "Subroutines:\n    ";
+    OS << "Subroutines: [\n    ";
     PrintItems(OS, subs, "\n    ");
+    OS << "  ]\n";
     OS << "CFI: {\n";
     cfi.print(OS);
     OS << "  }\n";
